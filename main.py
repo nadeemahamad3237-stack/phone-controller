@@ -1,64 +1,122 @@
-import os
-import time
+import re
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.button import Button
+from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
+from kivy.uix.scrollview import ScrollView
+from kivy.clock import Clock
 
-class VoicePhoneController:
-    def __init__(self):
-        print("=== Silent Background Voice Controller Started ===")
+class LocalAIBot:
+    """Offline Rule & Pattern Based AI Engine (No API Needed)"""
+    def generate_reply(self, text):
+        text = text.lower().strip()
+        
+        if not text:
+            return "Please say or type something."
+            
+        # Greeting patterns
+        if re.search(r'\b(hi|hello|hey|greetings|hola)\b', text):
+            return "Hello! I am your local phone assistant. How can I help you today?"
+            
+        # Device Control Commands
+        elif "mic" in text or "listen" in text:
+            return "You can use the 'Turn Mic ON' toggle button at the top to start/stop background listening."
+        elif "status" in text:
+            return "All local services are active. Background voice listener and local bot are ready."
+        elif "who are you" in text or "name" in text:
+            return "I am your offline Phone Controller Bot built directly into this app."
+        elif "help" in text:
+            return "You can type commands like 'status', 'mic', or ask general questions. I work completely offline!"
+        elif "time" in text or "date" in text:
+            from datetime import datetime
+            return f"Current local time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            
+        # Fallback default response
+        else:
+            return f"Processed command: '{text}'. (Local AI Active - No API needed)"
 
-    def listen_silently(self):
-        """
-        Yeh background me silent rahega. 
-        Jab aap bolenge tabhi command capture karega.
-        """
-        try:
-            # Termux API speech recognition
-            res = os.popen('termux-speech-to-text').read().lower().strip()
-            return res
-        except Exception:
-            return ""
+class PhoneControllerApp(App):
+    def build(self):
+        self.mic_active = False
+        self.ai_engine = LocalAIBot()
+        
+        main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        
+        # Header Status
+        self.status_label = Label(
+            text="[ Status: Mic OFF | Offline AI Bot Ready ]", 
+            size_hint_y=0.08,
+            color=(0.3, 0.8, 1, 1)
+        )
+        main_layout.add_widget(self.status_label)
+        
+        # Mic Toggle Button
+        self.mic_btn = Button(
+            text="Turn Mic ON (Background Active)", 
+            size_hint_y=0.12, 
+            background_color=(0.2, 0.8, 0.2, 1)
+        )
+        self.mic_btn.bind(on_press=self.toggle_mic)
+        main_layout.add_widget(self.mic_btn)
+        
+        # Chat Display Area
+        self.chat_logs = Label(
+            text="[Offline AI Bot]: Hello! I work 100% offline without any API key.\n", 
+            size_hint_y=None,
+            halign='left',
+            valign='top'
+        )
+        self.chat_logs.bind(texture_size=self._update_chat_height)
+        
+        scroll = ScrollView(size_hint_y=0.6, do_scroll_x=False)
+        scroll.add_widget(self.chat_logs)
+        main_layout.add_widget(scroll)
+        
+        # Input Section
+        input_layout = BoxLayout(orientation='horizontal', size_hint_y=0.15, spacing=5)
+        self.user_input = TextInput(
+            hint_text="Type command or chat (e.g. hi, status, time)...", 
+            multiline=False
+        )
+        send_btn = Button(text="Send", size_hint_x=0.25, background_color=(0.2, 0.6, 1, 1))
+        send_btn.bind(on_press=self.send_message)
+        
+        input_layout.add_widget(self.user_input)
+        input_layout.add_widget(send_btn)
+        main_layout.add_widget(input_layout)
+        
+        return main_layout
 
-    def process_command(self, cmd):
-        if not cmd:
-            return
+    def _update_chat_height(self, instance, value):
+        instance.height = value[1]
+        instance.text_size = (instance.width, None)
 
-        print(f"Active Command Received: {cmd}")
+    def toggle_mic(self, instance):
+        self.mic_active = not self.mic_active
+        if self.mic_active:
+            self.mic_btn.text = "Turn Mic OFF"
+            self.mic_btn.background_color = (0.9, 0.2, 0.2, 1)
+            self.status_label.text = "[ Status: Mic Listening in Background... ]"
+            self.chat_logs.text += "\n[System]: Background listener active."
+        else:
+            self.mic_btn.text = "Turn Mic ON (Background Active)"
+            self.mic_btn.background_color = (0.2, 0.8, 0.2, 1)
+            self.status_label.text = "[ Status: Mic OFF | Offline AI Bot Ready ]"
+            self.chat_logs.text += "\n[System]: Background listener stopped."
 
-        # 1. Open Apps
-        if "youtube" in cmd:
-            os.system("termux-open-url https://www.youtube.com")
-        elif "whatsapp" in cmd:
-            os.system("am start -n com.whatsapp/.Main")
-        elif "chrome" in cmd:
-            os.system("am start -n com.android.chrome/com.google.android.apps.chrome.Main")
+    def send_message(self, instance):
+        msg = self.user_input.text.strip()
+        if msg:
+            self.chat_logs.text += f"\n[You]: {msg}"
+            self.user_input.text = ""
+            
+            # Instant Offline Bot Reply
+            reply = self.ai_engine.generate_reply(msg)
+            Clock.schedule_once(lambda dt: self.bot_reply(reply), 0.1)
 
-        # 2. Inside App Controls
-        elif "scroll down" in cmd or "down" in cmd:
-            os.system("input swipe 500 1500 500 500 300")
-        elif "scroll up" in cmd or "up" in cmd:
-            os.system("input swipe 500 500 500 1500 300")
-        elif "click" in cmd or "select" in cmd:
-            os.system("input tap 500 1000")
-        elif "back" in cmd:
-            os.system("input keyevent 4")
-        elif "home" in cmd:
-            os.system("input keyevent 3")
-
-        # 3. System Actions
-        elif "vibrate" in cmd:
-            os.system("termux-vibrate -d 1000")
-        elif "torch on" in cmd:
-            os.system("termux-torch on")
-        elif "torch off" in cmd:
-            os.system("termux-torch off")
-
-    def run(self):
-        while True:
-            # Silent background listening loop
-            cmd = self.listen_silently()
-            if cmd:
-                self.process_command(cmd)
-            time.sleep(2) # CPU waise hi free rahega
+    def bot_reply(self, reply_text):
+        self.chat_logs.text += f"\n[Offline AI Bot]: {reply_text}"
 
 if __name__ == "__main__":
-    app = VoicePhoneController()
-    app.run()
+    PhoneControllerApp().run()

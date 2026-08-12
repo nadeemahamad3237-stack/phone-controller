@@ -6,63 +6,40 @@ from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.clock import Clock
+from kivy.utils import platform
 
-class LocalAIBot:
-    """Offline Rule & Pattern Based AI Engine (No API Needed)"""
-    def generate_reply(self, text):
-        text = text.lower().strip()
-        
-        if not text:
-            return "Please say or type something."
-            
-        # Greeting patterns
-        if re.search(r'\b(hi|hello|hey|greetings|hola)\b', text):
-            return "Hello! I am your local phone assistant. How can I help you today?"
-            
-        # Device Control Commands
-        elif "mic" in text or "listen" in text:
-            return "You can use the 'Turn Mic ON' toggle button at the top to start/stop background listening."
-        elif "status" in text:
-            return "All local services are active. Background voice listener and local bot are ready."
-        elif "who are you" in text or "name" in text:
-            return "I am your offline Phone Controller Bot built directly into this app."
-        elif "help" in text:
-            return "You can type commands like 'status', 'mic', or ask general questions. I work completely offline!"
-        elif "time" in text or "date" in text:
-            from datetime import datetime
-            return f"Current local time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-            
-        # Fallback default response
-        else:
-            return f"Processed command: '{text}'. (Local AI Active - No API needed)"
+if platform == 'android':
+    from jnius import autoclass
+    
+    PythonActivity = autoclass('org.kivy.android.PythonActivity')
+    Intent = autoclass('android.content.Intent')
+    SpeechRecognizer = autoclass('android.speech.SpeechRecognizer')
+    RecognizerIntent = autoclass('android.speech.RecognizerIntent')
 
 class PhoneControllerApp(App):
     def build(self):
         self.mic_active = False
-        self.ai_engine = LocalAIBot()
+        self.recognizer = None
         
         main_layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
         
-        # Header Status
         self.status_label = Label(
-            text="[ Status: Mic OFF | Offline AI Bot Ready ]", 
+            text="[ Status: Mic OFF | Native Engine Ready ]", 
             size_hint_y=0.08,
             color=(0.3, 0.8, 1, 1)
         )
         main_layout.add_widget(self.status_label)
         
-        # Mic Toggle Button
         self.mic_btn = Button(
-            text="Turn Mic ON (Background Active)", 
+            text="Turn Mic ON (Real Background Listening)", 
             size_hint_y=0.12, 
             background_color=(0.2, 0.8, 0.2, 1)
         )
         self.mic_btn.bind(on_press=self.toggle_mic)
         main_layout.add_widget(self.mic_btn)
         
-        # Chat Display Area
         self.chat_logs = Label(
-            text="[Offline AI Bot]: Hello! I work 100% offline without any API key.\n", 
+            text="[System]: App Started. Native Speech Engine Ready.\n", 
             size_hint_y=None,
             halign='left',
             valign='top'
@@ -73,12 +50,8 @@ class PhoneControllerApp(App):
         scroll.add_widget(self.chat_logs)
         main_layout.add_widget(scroll)
         
-        # Input Section
         input_layout = BoxLayout(orientation='horizontal', size_hint_y=0.15, spacing=5)
-        self.user_input = TextInput(
-            hint_text="Type command or chat (e.g. hi, status, time)...", 
-            multiline=False
-        )
+        self.user_input = TextInput(hint_text="Type command or speak...", multiline=False)
         send_btn = Button(text="Send", size_hint_x=0.25, background_color=(0.2, 0.6, 1, 1))
         send_btn.bind(on_press=self.send_message)
         
@@ -97,26 +70,47 @@ class PhoneControllerApp(App):
         if self.mic_active:
             self.mic_btn.text = "Turn Mic OFF"
             self.mic_btn.background_color = (0.9, 0.2, 0.2, 1)
-            self.status_label.text = "[ Status: Mic Listening in Background... ]"
-            self.chat_logs.text += "\n[System]: Background listener active."
+            self.status_label.text = "[ Status: ACTIVE - Real Mic Listener ]"
+            self.chat_logs.text += "\n[System]: Hardware Microphone Turned ON."
+            self.start_native_speech_recognition()
         else:
-            self.mic_btn.text = "Turn Mic ON (Background Active)"
+            self.mic_btn.text = "Turn Mic ON (Real Background Listening)"
             self.mic_btn.background_color = (0.2, 0.8, 0.2, 1)
-            self.status_label.text = "[ Status: Mic OFF | Offline AI Bot Ready ]"
-            self.chat_logs.text += "\n[System]: Background listener stopped."
+            self.status_label.text = "[ Status: Mic OFF | Native Engine Ready ]"
+            self.chat_logs.text += "\n[System]: Hardware Microphone Turned OFF."
+            self.stop_native_speech_recognition()
+
+    def start_native_speech_recognition(self):
+        if platform == 'android':
+            try:
+                activity = PythonActivity.mActivity
+                intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, True)
+                
+                if not self.recognizer:
+                    self.recognizer = SpeechRecognizer.createSpeechRecognizer(activity)
+                self.recognizer.startListening(intent)
+            except Exception as e:
+                self.chat_logs.text += f"\n[Mic Error]: {str(e)}"
+
+    def stop_native_speech_recognition(self):
+        if platform == 'android' and self.recognizer:
+            try:
+                self.recognizer.stopListening()
+            except Exception as e:
+                pass
 
     def send_message(self, instance):
         msg = self.user_input.text.strip()
         if msg:
             self.chat_logs.text += f"\n[You]: {msg}"
             self.user_input.text = ""
-            
-            # Instant Offline Bot Reply
-            reply = self.ai_engine.generate_reply(msg)
+            reply = f"Executed: {msg}"
             Clock.schedule_once(lambda dt: self.bot_reply(reply), 0.1)
 
     def bot_reply(self, reply_text):
-        self.chat_logs.text += f"\n[Offline AI Bot]: {reply_text}"
+        self.chat_logs.text += f"\n[AI Bot]: {reply_text}"
 
 if __name__ == "__main__":
     PhoneControllerApp().run()
